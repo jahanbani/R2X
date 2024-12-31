@@ -103,6 +103,7 @@ def base_cli() -> argparse.ArgumentParser:
             "reeds-US",
             "plexos",
             "infrasys",
+            "sienna"
         ],
         help="Input model to convert from",
     )

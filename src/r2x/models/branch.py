@@ -1,9 +1,9 @@
 """Model related to branches."""
 
-from r2x.models.core import Device
-from r2x.models.topology import ACBus, DCBus, Area
-from typing import Annotated
-from pydantic import Field, NonNegativeFloat, NonPositiveFloat
+from r2x.models.core import Device, MinMax
+from r2x.models.topology import Bus, ACBus, DCBus, Area
+from typing import Annotated, Any
+from pydantic import Field, NonNegativeFloat, NonPositiveFloat, field_serializer
 from r2x.units import ActivePower, Percentage
 
 
@@ -23,8 +23,18 @@ class ACBranch(Branch):
     to_bus: Annotated[ACBus, Field(description="Bus connected downstream from the arc.")]
     r: Annotated[float | None, Field(description=("Resistance of the branch"))] = None
     x: Annotated[float | None, Field(description=("Reactance of the branch"))] = None
-    b: Annotated[float | None, Field(description=("Shunt susceptance of the branch"))] = None
+    primary_shunt: Annotated[float | None, Field(description=("Primary shunt of the branch"))] = None
     rating: Annotated[ActivePower, Field(ge=0, description="Thermal rating of the line.")] | None = None
+    active_power_flow: Annotated[ActivePower, Field(ge=0, description="Active power flow of the line.")] | None = None
+    reactive_power_flow: Annotated[ActivePower, Field(ge=0, description="Reactive power flow of the line.")] | None = None
+    angle_limits: Annotated[
+        MinMax | None, Field(description="Maximum and minimum angles of the branch.")
+    ] = None
+
+    @field_serializer("angle_limits")
+    def serialize_angle_limits(self, min_max: MinMax) -> dict[str, Any]:
+        if min_max is not None:
+            return {"min": min_max.min, "max": min_max.max}
 
 
 class MonitoredLine(ACBranch):
@@ -76,8 +86,38 @@ class Transformer2W(ACBranch):
 class DCBranch(Branch):
     """Class representing a DC connection between components."""
 
-    from_bus: Annotated[DCBus, Field(description="Bus connected upstream from the arc.")]
-    to_bus: Annotated[DCBus, Field(description="Bus connected downstream from the arc.")]
+    from_bus: Annotated[Bus, Field(description="Bus connected upstream from the arc.")]
+    to_bus: Annotated[Bus, Field(description="Bus connected downstream from the arc.")]
+    active_power_flow: Annotated[ActivePower, Field(ge=0, description="Active power flow of the line.")] | None = None
+    active_power_limits_from: Annotated[
+        MinMax | None, Field(description="Maximum and minimum 'from' active power flow of the line.")
+    ] = None
+    active_power_limits_to: Annotated[
+        MinMax | None, Field(description="Maximum and minimum 'to' active power flow of the line.")
+    ] = None
+    reactive_power_limits_from: Annotated[
+        MinMax | None, Field(description="Maximum and minimum 'from' reactive power flow of the line.")
+    ] = None
+    reactive_power_limits_to: Annotated[
+        MinMax | None, Field(description="Maximum and minimum 'to' reactive power flow of the line.")
+    ] = None
+
+    @field_serializer("active_power_limits_from")
+    def serialize_active_power_limits_from(self, min_max: MinMax) -> dict[str, Any]:
+        if min_max is not None:
+            return {"min": min_max.min, "max": min_max.max}
+    @field_serializer("active_power_limits_to")
+    def serialize_active_power_limits_to(self, min_max: MinMax) -> dict[str, Any]:
+        if min_max is not None:
+            return {"min": min_max.min, "max": min_max.max}
+    @field_serializer("reactive_power_limits_from")
+    def serialize_reactive_power_limits_from(self, min_max: MinMax) -> dict[str, Any]:
+        if min_max is not None:
+            return {"min": min_max.min, "max": min_max.max}
+    @field_serializer("reactive_power_limits_to")
+    def serialize_reactive_power_limits_to(self, min_max: MinMax) -> dict[str, Any]:
+        if min_max is not None:
+            return {"min": min_max.min, "max": min_max.max}
 
 
 class AreaInterchange(Branch):

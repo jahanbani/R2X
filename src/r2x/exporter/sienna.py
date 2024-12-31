@@ -158,7 +158,7 @@ class SiennaExporter(BaseExporter):
             "active_power",
             "reactive_power",
             "max_active_power",
-            "max_reeactive_power",
+            "max_reactive_power",
         ]
         records = [
             component.model_dump(exclude_none=True, mode="python", serialize_as_any=True)
@@ -193,15 +193,16 @@ class SiennaExporter(BaseExporter):
             "name",
             "connection_points_from",
             "connection_points_to",
+            "active_power_flow",
+            "reactive_power_flow",
+            "min_angle_limits",
+            "max_angle_limits",
             "r",
             "x",
             "primary_shunt",
             "rate",
-            "rating_up",
-            "rating_down",
             "tap",
             "is_transformer",
-            "ext",
         ]
 
         key_mapping = {
@@ -209,7 +210,8 @@ class SiennaExporter(BaseExporter):
             "to_bus": "connection_points_to",
             "class_type": "branch_type",
             "rating": "rate",
-            "b": "primary_shunt",
+            "angle_limits_min": "min_angle_limits",
+            "angle_limits_max": "max_angle_limits"
         }
 
         records = [
@@ -218,6 +220,7 @@ class SiennaExporter(BaseExporter):
         ]
         export_records = get_export_records(
             records,
+            partial(apply_flatten_key, keys_to_flatten={"angle_limits"}),
             partial(apply_property_map, property_map=self.property_map | key_mapping),
             partial(apply_pint_deconstruction, unit_map=self.unit_map),
             partial(
@@ -251,21 +254,57 @@ class SiennaExporter(BaseExporter):
             "name",
             "connection_points_from",
             "connection_points_to",
-            "rate",
+            "active_power_flow",
+            "min_active_power_limits_from",
+            "max_active_power_limits_from",
+            "min_active_power_limits_to",
+            "max_active_power_limits_to",
+            "min_reactive_power_limits_from",
+            "max_reactive_power_limits_from",
+            "min_reactive_power_limits_to",
+            "max_reactive_power_limits_to",
             "loss",
+            "control_mode"
         ]
 
-        self.system.export_component_to_csv(
-            DCBranch,
+        key_mapping = {
+            "from_bus": "connection_points_from",
+            "to_bus": "connection_points_to",
+            "class_type": "branch_type",
+            "active_power_limits_from_min": "min_active_power_limits_from",
+            "active_power_limits_from_max": "max_active_power_limits_from",
+            "active_power_limits_to_min": "min_active_power_limits_to",
+            "active_power_limits_to_max": "max_active_power_limits_to",
+            "reactive_power_limits_from_min": "min_reactive_power_limits_from",
+            "reactive_power_limits_from_max": "max_reactive_power_limits_from",
+            "reactive_power_limits_to_min": "min_reactive_power_limits_to",
+            "reactive_power_limits_to_max": "max_reactive_power_limits_to",
+        }
+
+        records = [
+            component.model_dump(exclude_none=True, mode="python", serialize_as_any=True)
+            for component in self.system.get_components(DCBranch)
+        ]
+        export_records = get_export_records(
+            records,
+            partial(apply_flatten_key, keys_to_flatten={
+                "active_power_limits_from",
+                "active_power_limits_to",
+                "reactive_power_limits_from",
+                "reactive_power_limits_to"
+            }),
+            partial(apply_property_map, property_map=self.property_map | key_mapping),
+            partial(apply_pint_deconstruction, unit_map=self.unit_map),
+            partial(
+                apply_unnest_key,
+                key_map={"connection_points_from": "number", "connection_points_to": "number"},
+            ),
+            partial(apply_default_value, default_value_map={"control_mode": "Power"}),
+        )
+        self.system._export_dict_to_csv(
+            export_records,
             fpath=self.output_folder / fname,
             fields=output_fields,
-            unnest_key="number",
-            key_mapping={
-                "from_bus": "connection_points_from",
-                "to_bus": "connection_points_to",
-                "class_type": "branch_type",
-                "rating_up": "rate",
-            },
             restval="NA",
         )
         logger.info(f"File {fname} created.")
@@ -293,7 +332,12 @@ class SiennaExporter(BaseExporter):
         export_records = get_export_records(
             records,
             partial(apply_operation_table_data),
-            partial(apply_flatten_key, keys_to_flatten={"active_power_limits"}),
+            partial(apply_flatten_key, keys_to_flatten={
+                "active_power_limits",
+                "reactive_power_limits",
+                "pump_active_power_limits",
+                "pump_reactive_power_limits"
+            }),
             partial(apply_property_map, property_map=self.property_map | key_mapping),
             partial(apply_pint_deconstruction, unit_map=self.unit_map),
             partial(apply_unnest_key, key_map={"bus_id": "number"}),
@@ -392,17 +436,22 @@ class SiennaExporter(BaseExporter):
             "available",
             "generator_name",
             "bus_id",
+            "base_power",
             "active_power",
             "rating",
             "input_efficiency",
             "output_efficiency",
             "storage_capacity",
             "min_storage_capacity",
-            "max_storage_capacity",
+            # "max_storage_capacity",
+            "input_active_power_limit_max",
             "input_active_power_limit_min",
             "output_active_power_limit_max",
             "output_active_power_limit_min",
+            "energy_level",
             "unit_type",
+            "storage_target",
+            "efficiency"
         ]
 
         generic_storage = get_export_records(
@@ -410,9 +459,21 @@ class SiennaExporter(BaseExporter):
             partial(apply_property_map, property_map=self.property_map),
             partial(apply_flatten_key, keys_to_flatten={"active_power_limits"}),
             partial(apply_pint_deconstruction, unit_map=self.unit_map),
-            # partial(apply_valid_properties, valid_properties=output_fields),
+            partial(
+                apply_default_value,
+                default_value_map={"min_storage_capacity": 0.0, "storage_target": 0.0},
+            ),
         )
-        hydro_pump = list(self.system.to_records(HydroPumpedStorage))
+        hydro_pump = get_export_records(
+            list(self.system.to_records(HydroPumpedStorage)),
+            partial(apply_property_map, property_map=self.property_map),
+            partial(apply_flatten_key, keys_to_flatten={"active_power_limits"}),
+            partial(apply_pint_deconstruction, unit_map=self.unit_map),
+            partial(
+                apply_default_value,
+                default_value_map={"min_storage_capacity": 0.0, "storage_target": 0.0},
+            ),
+        )
         storage_list = generic_storage + hydro_pump
 
         if not storage_list:
@@ -427,27 +488,30 @@ class SiennaExporter(BaseExporter):
             output_dict["output_active_power_limit_max"] = output_dict["active_power_limits_max"]
             # NOTE: If we need to change this in the future, we could probably
             # use the function max to check if the component has the field.
-            output_dict["input_active_power_limit_min"] = 0  # output_dict["active_power"]
-            output_dict["output_active_power_limit_min"] = 0  # output_dict["active_power"]
-            output_dict["active_power"] = output_dict["active_power"]
+            output_dict["input_active_power_limit_min"] = output_dict["active_power_limits_min"]
+            output_dict["output_active_power_limit_min"] = output_dict["active_power_limits_min"]
             output_dict["bus_id"] = (
                 getattr(self.system.get_component_by_label(output_dict["bus"]), "number", None)
                 if output_dict["bus"]
                 else None
             )
-            output_dict["rating"] = output_dict["rating"]
 
             # NOTE: For pumped hydro storage we create a head and a tail
             # representation that keeps track of the upper and down reservoir
             # state of charge.
             # if storage["class_type"] == "HydroPumpedStorage":
-            original_name = output_dict["name"]
-            output_dict["name"] = original_name + "_head"
-            output_dict["position"] = "head"
-            output_data.append(output_dict)
-            tail_copy = output_dict.copy()
-            tail_copy["name"] = original_name + "_tail"
-            output_dict["position"] = "tail"
+            head_copy = {
+                k:v["up"] if (isinstance(v, dict) and ("up" in v)) else v for (k, v) in output_dict.items()
+            }
+            head_copy["name"] = head_copy["name"] + "_head"
+            head_copy["position"] = "head"
+            output_data.append(head_copy)
+
+            tail_copy = {
+                k:v["down"] if (isinstance(v, dict) and ("down" in v)) else v for (k, v) in output_dict.items()
+            }
+            tail_copy["name"] = tail_copy["name"] + "_tail"
+            tail_copy["position"] = "tail"
             output_data.append(tail_copy)
 
         key_mapping = self.property_map
@@ -473,7 +537,7 @@ class SiennaExporter(BaseExporter):
         ts_pointers_list = []
 
         for component_type, time_series in self.time_series_objects.items():
-            csv_fpath = self.ts_directory / (f"{component_type}_{self.config.name}_{self.year}.csv")
+            csv_fpath = self.ts_directory / (f"{component_type}_{self.config.name}_{self.config.weather_year}.csv")
             for i in range(len(time_series)):
                 component_name = self.time_series_name_by_type[component_type][i]
                 ts_instance = time_series[i]
@@ -576,16 +640,15 @@ def apply_operation_table_data(
     >>> updated_component["cost_point_1"]
     1000
     """
-    if not component.get("operation_cost", False):
-        return component
 
-    operation_cost = component["operation_cost"]
+    if not (operation_cost := component.get("operation_cost")):
+        return component
 
     if not (variable := operation_cost.get("variable")):
         return component
 
-    if haskey(variable, ["vom_cost", "function_data"]):
-        component["variable_cost"] = variable["vom_cost"]["function_data"]["proportional_term"]
+    if haskey(variable, ["vom_units", "function_data"]):
+        component["variable_cost"] = variable["vom_units"]["function_data"]["proportional_term"]
 
     if "fuel_cost" in variable.keys():
         assert variable["fuel_cost"] is not None
@@ -600,27 +663,27 @@ def apply_operation_table_data(
             component["heat_rate_a1"] = function_data["proportional_term"]
         if "quadratic_term" in function_data.keys():
             component["heat_rate_a2"] = function_data["quadratic_term"]
-        if "points" in function_data.keys():
+        if "x_coords" in function_data.keys():
             component = _variable_type_parsing(component, operation_cost)
     return component
 
 
 def _variable_type_parsing(component: dict, cost_dict: dict[str, Any]) -> dict[str, Any]:
-    variable_curve = cost_dict["variable"]
-    x_y_coords = variable_curve["value_curve"]["function_data"]["points"]
+    function_data = cost_dict["variable"]["value_curve"]["function_data"]
+
+    x_coords = function_data["x_coords"]
+    for i, x_coord in enumerate(x_coords):
+        output_point_col = f"output_point_{i}"
+        component[output_point_col] = x_coord
+
+    y_coords = function_data["y_coords"]
     match cost_dict["variable_type"]:
         case "CostCurve":
-            for i, (x_coord, y_coord) in enumerate(x_y_coords):
-                output_point_col = f"output_point_{i}"
-                component[output_point_col] = x_coord
-
+            for i, y_coord in enumerate(y_coords):
                 cost_point_col = f"cost_point_{i}"
                 component[cost_point_col] = y_coord
         case "FuelCurve":
-            for i, (x_coord, y_coord) in enumerate(x_y_coords):
-                output_point_col = f"output_point_{i}"
-                component[output_point_col] = x_coord
-
+            for i, y_coord in enumerate(y_coords):
                 heat_rate_col = "heat_rate_avg_0" if i == 0 else f"heat_rate_incr_{i}"
                 component[heat_rate_col] = y_coord
         case _:

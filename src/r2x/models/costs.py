@@ -2,9 +2,8 @@
 
 from typing import Annotated
 from infrasys.models import InfraSysBaseModelWithIdentifers
-from infrasys.value_curves import LinearCurve
 from pydantic import Field, computed_field
-from infrasys.cost_curves import FuelCurve, ProductionVariableCostCurve
+from infrasys.cost_curves import ProductionVariableCostCurve
 from r2x.units import Currency
 from operator import attrgetter
 
@@ -66,7 +65,6 @@ class ThermalGenerationCost(OperationalCost):
             fixed=Currency(0, "usd"),
             shut_down=Currency(100, "usd"),
             start_up=Currency(100, "usd"),
-            variable=FuelCurve(value_curve=LinearCurve(10)),  # type: ignore
         )
 
 

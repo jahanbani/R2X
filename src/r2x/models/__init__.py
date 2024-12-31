@@ -1,6 +1,6 @@
 # Models
 # ruff: noqa
-from .branch import Branch, ACBranch, DCBranch, MonitoredLine, Transformer2W
+from .branch import Branch, ACBranch, DCBranch, MonitoredLine, Transformer2W, TModelHVDCLine
 from .core import ReserveMap, TransmissionInterfaceMap, MinMax
 from .generators import (
     Generator,

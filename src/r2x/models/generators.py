@@ -4,7 +4,7 @@ from typing import Annotated, Any
 
 from pydantic import Field, NonNegativeFloat, field_serializer
 
-from r2x.models.core import Device, MinMax
+from r2x.models.core import Device, MinMax, UpDown
 from r2x.models.costs import OperationalCost
 from r2x.models.topology import ACBus
 from r2x.models.load import PowerLoad
@@ -24,6 +24,7 @@ from r2x.units import (
 class Generator(Device):
     """Abstract generator class."""
 
+    status: Annotated[bool, Field(description="Status of the component.")] = True
     bus: Annotated[ACBus, Field(description="Bus where the generator is connected.")] | None = None
     rating: Annotated[
         ApparentPower | None,
@@ -127,9 +128,16 @@ class Generator(Device):
     active_power_limits: Annotated[
         MinMax | None, Field(description="Maximum output power rating of the unit (MVA).")
     ] = None
+    reactive_power_limits: Annotated[
+        MinMax | None, Field(description="Maximum output power rating of the unit (MVA).")
+    ] = None
 
     @field_serializer("active_power_limits")
     def serialize_active_power_limits(self, min_max: MinMax) -> dict[str, Any]:
+        if min_max is not None:
+            return {"min": min_max.min, "max": min_max.max}
+    @field_serializer("reactive_power_limits")
+    def serialize_reactive_power_limits(self, min_max: MinMax) -> dict[str, Any]:
         if min_max is not None:
             return {"min": min_max.min, "max": min_max.max}
 
@@ -183,15 +191,14 @@ class HydroEnergyReservoir(HydroGen):
     """Class representing hydro system with reservoirs."""
 
     initial_energy: (
-        Annotated[NonNegativeFloat, Field(description="Initial water volume or percentage.")] | None
-    ) = 0
-    storage_capacity: (
-        Annotated[
-            Energy,
-            Field(description="Total water volume or percentage."),
-        ]
-        | None
+        Annotated[UpDown, Field(description="Initial water volume or percentage.")] | None
     ) = None
+    storage_capacity: (
+        Annotated[UpDown, Field(description="Total water volume or percentage.")] | None
+    )
+    storage_target: (
+        Annotated[UpDown, Field(description="Maximum energy limit.")] | None
+    )
     min_storage_capacity: (
         Annotated[
             Energy,
@@ -199,13 +206,19 @@ class HydroEnergyReservoir(HydroGen):
         ]
         | None
     ) = None
-    storage_target: (
-        Annotated[
-            Energy,
-            Field(description="Maximum energy limit."),
-        ]
-        | None
-    ) = None
+
+    @field_serializer("initial_energy")
+    def serialize_initial_energy(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
+    @field_serializer("storage_capacity")
+    def serialize_storage_capacity(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
+    @field_serializer("storage_target")
+    def serialize_storage_target(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
 
 
 class HydroPumpedStorage(HydroGen):
@@ -219,12 +232,14 @@ class HydroPumpedStorage(HydroGen):
         | None
     ) = None
     initial_volume: (
-        Annotated[Energy, Field(gt=0, description="Initial water volume or percentage.")] | None
+        Annotated[UpDown, Field(description="Initial water volume or percentage.")] | None
     ) = None
-    storage_capacity: Annotated[
-        Energy,
-        Field(gt=0, description="Total water volume or percentage."),
-    ]
+    storage_capacity: (
+        Annotated[UpDown, Field(description="Total water volume or percentage.")] | None
+    )
+    storage_target: (
+        Annotated[UpDown, Field(description="Maximum energy limit.")] | None
+    )
     min_storage_capacity: (
         Annotated[
             Energy,
@@ -240,6 +255,49 @@ class HydroPumpedStorage(HydroGen):
         ]
         | None
     ) = None
+    pump_active_power_limits: Annotated[
+        MinMax | None, Field(description="Min and max active power ratings of the pump component.")
+    ] = None
+    pump_reactive_power_limits: Annotated[
+        MinMax | None, Field(description="Min and max reactive power ratings of the pump component.")
+    ] = None
+    pump_ramp_up: (
+        Annotated[
+            PowerRate,
+            Field(description="Ramping rate on the positve direction."),
+        ]
+        | None
+    ) = None
+    pump_ramp_down: (
+        Annotated[
+            PowerRate,
+            Field(description="Ramping rate on the negative direction."),
+        ]
+        | None
+    ) = None
+    pump_min_up_time: (
+        Annotated[
+            Time,
+            Field(ge=0, description="Minimum up time in hours for UC decision."),
+        ]
+        | None
+    ) = None
+    pump_min_down_time: (
+        Annotated[
+            Time,
+            Field(ge=0, description="Minimum down time in hours for UC decision."),
+        ]
+        | None
+    ) = None    
+
+    @field_serializer("pump_active_power_limits")
+    def serialize_pump_active_power_limits(self, min_max: MinMax) -> dict[str, Any]:
+        if min_max is not None:
+            return {"min": min_max.min, "max": min_max.max}
+    @field_serializer("pump_reactive_power_limits")
+    def serialize_pump_reactive_power_limits(self, min_max: MinMax) -> dict[str, Any]:
+        if min_max is not None:
+            return {"min": min_max.min, "max": min_max.max}
 
     @classmethod
     def example(cls) -> "HydroPumpedStorage":
@@ -256,6 +314,19 @@ class HydroPumpedStorage(HydroGen):
             initial_volume=Energy(500, "MWh"),
             ext={"description": "Pumped hydro unit with 10 hour of duration"},
         )
+
+    @field_serializer("initial_volume")
+    def serialize_initial_volume(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
+    @field_serializer("storage_capacity")
+    def serialize_storage_capacity(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
+    @field_serializer("storage_target")
+    def serialize_storage_target(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
 
 
 class ThermalGen(Generator):
@@ -292,17 +363,34 @@ class Storage(Generator):
         ]
         | None
     ) = None
-    storage_capacity: Annotated[
-        Energy,
-        Field(description="Maximum allowed volume or state of charge."),
-    ]
-    initial_energy: Annotated[Percentage, Field(description="Initial state of charge.")] | None = None
+    storage_capacity: (
+        Annotated[UpDown, Field(description="Maximum allowed volume or state of charge.")] | None
+    )
+    storage_target: (
+        Annotated[UpDown, Field(description="Maximum energy limit.")] | None
+    )
+    initial_energy: (
+        Annotated[UpDown, Field(description="Initial state of charge.")] | None
+    ) = None
     min_storage_capacity: Annotated[Percentage, Field(description="Minimum state of charge")] = Percentage(
         0, "%"
     )
     max_storage_capacity: Annotated[Percentage, Field(description="Minimum state of charge")] = Percentage(
         100, "%"
     )
+
+    @field_serializer("initial_energy")
+    def serialize_initial_energy(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
+    @field_serializer("storage_capacity")
+    def serialize_storage_capacity(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
+    @field_serializer("storage_target")
+    def serialize_storage_target(self, up_down: UpDown) -> dict[str, Any]:
+        if up_down is not None:
+            return {"up": up_down.up, "down": up_down.down}
 
 
 class GenericBattery(Storage):

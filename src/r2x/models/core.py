@@ -30,6 +30,7 @@ class BaseComponent(Component):
 
 
 MinMax = namedtuple("MinMax", ["min", "max"])
+UpDown = namedtuple("UpDown", ["up", "down"])
 
 
 class Service(BaseComponent):

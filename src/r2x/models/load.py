@@ -29,18 +29,18 @@ class PowerLoad(StaticLoad):
     active_power: (
         Annotated[
             ActivePower,
-            Field(gt=0, description="Initial steady-state active power demand."),
+            Field(description="Initial steady-state active power demand."),
         ]
         | None
     ) = None
     reactive_power: (
-        Annotated[float, Field(gt=0, description="Reactive Power of Load at the bus in MW.")] | None
+        Annotated[float, Field(description="Reactive Power of Load at the bus in MW.")] | None
     ) = None
-    max_active_power: Annotated[ActivePower, Field(gt=0, description="Max Load at the bus in MW.")] | None = (
+    max_active_power: Annotated[ActivePower, Field(description="Max Load at the bus in MW.")] | None = (
         None
     )
     max_reactive_power: (
-        Annotated[ActivePower, Field(gt=0, description=" Initial steady-state reactive power demand.")] | None
+        Annotated[ActivePower, Field(description=" Initial steady-state reactive power demand.")] | None
     ) = None
     base_power: Annotated[
         ApparentPower | None,

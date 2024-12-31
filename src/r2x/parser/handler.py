@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 from collections.abc import Callable, Sequence
 from pathlib import Path
+import json
 
 # Third-party packages
 from loguru import logger
@@ -165,6 +166,10 @@ def file_handler(
                 key: value for key, value in kwargs.items() if key in inspect.signature(XMLHandler).parameters
             }
             return XMLHandler.parse(fpath=fpath, **class_kwargs)
+        case ".json":
+            logger.trace("Reading {}", fpath)
+            with open(fpath) as f:
+                return json.load(f)
         case _:
             raise NotImplementedError(f"File {fpath.suffix = } not yet supported.")
 
